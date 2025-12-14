@@ -1,25 +1,22 @@
-use std::{fmt::Debug};
+use std::fmt::Debug;
 
 fn main() {
-    let mut nums = 1..=50;
-    let values: Vec<i32> = (51..=100).collect();
+    let mut nums = 1..=10;
 
-    let mut bst = BinaryTree::new(nums.next().unwrap(), 0);
+    let mut bst = AvlTree::new(nums.next().unwrap(), 0);
 
 
     for num in nums {
-        println!("iteration num: {num}");
-        bst.insert(num, values[num - 1]);
-        bst.print();
-
-        println!("\nend of iteration\n-----------------------------------------")
+        bst.insert(num, 0);
     }
 
-    println!("{:?}", bst.find_value(&68));
+    bst.print();
+    bst.remove(&23);
+    bst.print();
 }
 
 struct Node<K, V>
-where K: Eq, K: Ord, K: Debug {
+where K: Eq + Ord + Debug {
     key: K,
     value: V,
     height: u32,
@@ -27,32 +24,44 @@ where K: Eq, K: Ord, K: Debug {
     right: Option<Box<Node<K, V>>>,
 }
 
+impl<K, V> Debug for Node<K, V> 
+where K: Eq + Ord + Debug {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Node")
+        .field("key", &self.key)
+        .field("left", &self.left)
+        .field("right", &self.right)
+        .finish()
+    }
+}
+
 impl<K, V> Node<K, V>
-where K: Eq, K: Ord, K: Debug {
+where K: Eq + Ord + Debug {
     pub fn new(key: K, value: V) -> Node<K, V> {
         Node { key, value, height: 1, left: None, right: None }
     }
 }
 
-struct BinaryTree<K, V>
-where  K: Eq, K: Ord, K: Debug {
-    pub root: Box<Node<K, V>>,
+struct AvlTree<K, V>
+where K: Eq + Ord + Debug {
+    pub root: Option<Box<Node<K, V>>>,
 }
 
-impl<K, V> BinaryTree<K, V>
-where K: Eq, K: Ord, K: Debug {
-    pub fn new(key: K, value: V) -> BinaryTree<K, V> {
-        BinaryTree { root: Box::new(Node::new(key, value))}
+impl<K, V> AvlTree<K, V>
+where K: Eq + Ord + Debug {
+    pub fn new(key: K, value: V) -> AvlTree<K, V> {
+        AvlTree { root: Some(Box::new(Node::new(key, value)))}
     }
 
-    pub fn from(root: Node<K, V>) -> BinaryTree<K, V> {
-        BinaryTree {root: Box::new(root)}
+    pub fn from(root: Node<K, V>) -> AvlTree<K, V> {
+        AvlTree {root: Some(Box::new(root))}
     }
 
     pub fn print(&self) {
-        let mut layers = vec![format!("{:?}({})", self.root.key, self.root.height)];
+        let r = self.root.as_ref().unwrap();
+        let mut layers = vec![format!("{:?}({})", r.key, r.height)];
         let depth = 1; //start with 1st layer (one with max 2 elements)
-        Self::print_recursive(&self.root, &mut layers, depth);
+        Self::print_recursive(&r, &mut layers, depth);
 
         for layer in layers {
             println!("{layer}");
@@ -80,7 +89,7 @@ where K: Eq, K: Ord, K: Debug {
     }
 
     pub fn find_value(&self, key: &K) -> Option<&V> {
-        let mut current_node = Some(&self.root);
+        let mut current_node = self.root.as_ref();
         
         while let Some(node) = current_node {
             if *key == node.key {
@@ -95,12 +104,12 @@ where K: Eq, K: Ord, K: Debug {
         None
     }
 
-    pub fn insert(&mut self, key: K, value: V) {
+    pub fn insert(&mut self, key: K, value: V) -> bool {
         let new_node = Box::new(Node::new(key, value));
-        Self::insert_recursive(&mut self.root, new_node);
+        Self::insert_rec(self.root.as_mut().unwrap(), new_node).is_some()
     }
 
-    fn insert_recursive(parent: &mut Box<Node<K, V>>, new_node: Box<Node<K, V>>) -> Option<bool> {
+    fn insert_rec(parent: &mut Box<Node<K, V>>, new_node: Box<Node<K, V>>) -> Option<bool> {
         if parent.key == new_node.key {return None}
         
         let is_left = new_node.key < parent.key;
@@ -111,7 +120,7 @@ where K: Eq, K: Ord, K: Debug {
         };
         
         let prev_is_left = if let Some(new_parent) = new_place {
-            Self::insert_recursive(new_parent, new_node)?
+            Self::insert_rec(new_parent, new_node)?
         } else {
             *new_place = Some(new_node);
             Self::update_height(parent);
@@ -154,6 +163,120 @@ where K: Eq, K: Ord, K: Debug {
 
         Some(is_left)
 
+    }
+
+    pub fn remove(&mut self, key: &K) -> bool {
+        let (new_root, matched) = Self::remove_rec(self.root.take(), key);
+        self.root = new_root;
+
+        if !matched {
+            return false;
+        }
+
+        self.root.as_mut().map(Self::balance_node);
+        
+        true
+    }
+
+    fn remove_rec(node: Option<Box<Node<K, V>>>, key: &K) -> (Option<Box<Node<K, V>>>, bool) {
+        let mut node = match node {
+            Some(n) => n,
+            None => return (None, false),
+        };
+
+        if *key == node.key {
+            match (node.left.take(), node.right.take()) {
+                (None, None) => return (None, true),
+                (left, None) => return (left, true),
+                (None, right) => return (right, true),
+                (left, Some(right)) => {
+                    let (new_node, new_right) = Self::extract_min_rec(right);
+                    let mut new_node = new_node.expect("cannot be None");
+                    
+                    new_node.left = left;
+                    new_node.right = new_right;
+
+                    return (Some(new_node), true);
+                },
+            }
+        }
+
+        let child = if *key < node.key {
+            &mut node.left
+        } else {
+            &mut node.right
+        };
+
+        let (new_child, matched) = Self::remove_rec(child.take(), key);
+        *child = new_child;
+        
+        if matched {
+            Self::balance_node(&mut node);
+            (Some(node), true)
+        } else {
+            (Some(node), false)
+        }
+    }
+
+    //min node, new node to replace original
+    fn extract_min_rec(mut node: Box<Node<K, V>>) -> (Option<Box<Node<K, V>>>, Option<Box<Node<K, V>>>) {
+        if let Some(left) = node.left.take() {
+            let (min_node, new_left) = Self::extract_min_rec(left);
+            node.left = new_left;
+            Self::balance_node(&mut node);
+            (min_node, Some(node))
+        } else {
+            let right = node.right.take();
+            (Some(node), right)
+        }
+    }
+
+    fn get_bf(node: &Box<Node<K, V>>) -> i32 {
+        let hl = node.left.as_ref().map(|n| n.height).unwrap_or(0) as i32;
+        let hr = node.right.as_ref().map(|n| n.height).unwrap_or(0) as i32;
+
+        hl - hr
+    }
+
+    fn balance_node(node: &mut Box<Node<K, V>>) {
+        let bf = Self::get_bf(&node);
+
+        if bf.abs() <= 1 {
+            Self::update_height(node);
+            return;
+        }
+
+        let is_left = bf > 0;
+
+        let child = if is_left {
+            node.left.as_mut().unwrap()
+        } else {
+            node.right.as_mut().unwrap()
+        };
+
+        let prev_is_left = Self::get_bf(&child) > 0;
+
+        //left left
+        if is_left && prev_is_left {
+            Self::rotate_right(node);
+        }
+        
+        //right right
+        else if !is_left && !prev_is_left {
+            Self::rotate_left(node);
+        }
+
+        //left right
+        else if is_left && !prev_is_left {
+            Self::rotate_left(child);
+            Self::rotate_right(node);
+        }
+
+        //right, left
+        else {
+            Self::rotate_right(child);
+            Self::rotate_left(node);
+        }
     }
 
     fn update_height(node: &mut Box<Node<K, V>>) {
