@@ -1,31 +1,8 @@
+mod node;
+
+use crate::node::*;
+
 use std::fmt::Debug;
-
-struct Node<K, V>
-where K: Ord + Debug {
-    key: K,
-    value: V,
-    height: u32,
-    left: Option<Box<Node<K, V>>>,
-    right: Option<Box<Node<K, V>>>,
-}
-
-impl<K, V> Debug for Node<K, V> 
-where K: Ord + Debug {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Node")
-        .field("key", &self.key)
-        .field("left", &self.left)
-        .field("right", &self.right)
-        .finish()
-    }
-}
-
-impl<K, V> Node<K, V>
-where K: Ord + Debug {
-    pub fn new(key: K, value: V) -> Node<K, V> {
-        Node { key, value, height: 1, left: None, right: None }
-    }
-}
 
 pub struct AvlTree<K, V>
 where K: Ord + Debug {
@@ -34,11 +11,16 @@ where K: Ord + Debug {
 
 impl<K, V> AvlTree<K, V>
 where K: Ord + Debug {
-    pub fn new(key: K, value: V) -> AvlTree<K, V> {
+    pub fn from(key: K, value: V) -> AvlTree<K, V> {
         AvlTree { root: Some(Box::new(Node::new(key, value)))}
     }
 
+    pub fn new() -> AvlTree<K, V> {
+        AvlTree { root: None }
+    }
+
     pub fn print(&self) {
+        if self.root.is_none() {return;}
         let r = self.root.as_ref().unwrap();
         let mut layers = vec![format!("{:?}({})", r.key, r.height)];
         let depth = 1; //start with 1st layer (one with max 2 elements)
@@ -105,7 +87,7 @@ where K: Ord + Debug {
             *new_place = Some(new_node);
         }        
         
-        Self::balance_node(parent);
+        parent.balance();
         true
     }
 
@@ -117,7 +99,7 @@ where K: Ord + Debug {
             return false;
         }
 
-        self.root.as_mut().map(Self::balance_node);
+        self.root.as_mut().map(Node::balance);
         
         true
     }
@@ -137,7 +119,7 @@ where K: Ord + Debug {
                     (left, None) => return (left, true),
                     (None, right) => return (right, true),
                     (left, Some(right)) => {
-                        let (new_node, new_right) = Self::extract_min_rec(right);
+                        let (new_node, new_right) = right.extract_min_rec();
                         let mut new_node = new_node.expect("cannot be None");
                         
                         new_node.left = left;
@@ -153,104 +135,10 @@ where K: Ord + Debug {
         *child = new_child;
         
         if matched {
-            Self::balance_node(&mut node);
+            node.balance();
         }
 
         (Some(node), matched)
-    }
-
-    //min node, new node to replace original
-    fn extract_min_rec(mut node: Box<Node<K, V>>) -> (Option<Box<Node<K, V>>>, Option<Box<Node<K, V>>>) {
-        if let Some(left) = node.left.take() {
-            let (min_node, new_left) = Self::extract_min_rec(left);
-            node.left = new_left;
-            Self::balance_node(&mut node);
-            (min_node, Some(node))
-        } else {
-            let right = node.right.take();
-            (Some(node), right)
-        }
-    }
-
-    fn get_bf(node: &Box<Node<K, V>>) -> i32 {
-        let hl = node.left.as_ref().map(|n| n.height).unwrap_or(0) as i32;
-        let hr = node.right.as_ref().map(|n| n.height).unwrap_or(0) as i32;
-
-        hl - hr
-    }
-
-    fn balance_node(node: &mut Box<Node<K, V>>) {
-        let bf = Self::get_bf(&node);
-
-        if bf.abs() <= 1 {
-            Self::update_height(node);
-            return;
-        }
-
-        let is_left = bf > 0;
-
-        let child = if is_left {
-            node.left.as_mut().unwrap()
-        } else {
-            node.right.as_mut().unwrap()
-        };
-
-        let prev_is_left = Self::get_bf(&child) > 0;
-
-        //left left
-        if is_left && prev_is_left {
-            Self::rotate_right(node);
-        }
-        
-        //right right
-        else if !is_left && !prev_is_left {
-            Self::rotate_left(node);
-        }
-
-        //left right
-        else if is_left && !prev_is_left {
-            Self::rotate_left(child);
-            Self::rotate_right(node);
-        }
-
-        //right, left
-        else {
-            Self::rotate_right(child);
-            Self::rotate_left(node);
-        }
-    }
-
-    fn update_height(node: &mut Box<Node<K, V>>) {
-        node.height = 1 + u32::max(
-            node.left.as_ref().map(|n| n.height ).unwrap_or(0),
-            node.right.as_ref().map(|n| n.height ).unwrap_or(0),
-        )
-    }
-
-    fn rotate_left(parent: &mut Box<Node<K, V>>) {
-        let mut b = parent.right.take().expect("rotate_left: called on node without right child");
-        let b_left = b.left.take();
-        
-        parent.right = b_left;
-
-        let mut old_parent = std::mem::replace(parent, b);
-        Self::update_height(&mut old_parent);
-
-        parent.left = Some(old_parent);
-        Self::update_height(parent);
-    }
-
-    fn rotate_right(parent: &mut Box<Node<K, V>>) {
-        let mut b = parent.left.take().expect("rotate_right: called on node without left child");
-        let b_right = b.right.take();
-
-        parent.left = b_right;
-
-        let mut old_parent = std::mem::replace(parent, b);
-        Self::update_height(&mut old_parent);
-
-        parent.right = Some(old_parent);
-        Self::update_height(parent);
     }
 
 }

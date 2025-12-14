@@ -1,10 +1,9 @@
-use std::fmt::Debug;
 use avl_tree::*;
 
 fn main() {
     let mut nums = 1..=10;
 
-    let mut bst = AvlTree::new(nums.next().unwrap(), 0);
+    let mut bst = AvlTree::from(nums.next().unwrap(), 0);
 
 
     for num in nums {
