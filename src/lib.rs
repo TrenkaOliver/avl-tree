@@ -55,13 +55,11 @@ where K: Ord + Debug {
         let mut current_node = self.root.as_ref();
         
         while let Some(node) = current_node {
-            if *key == node.key {
-                return Some(&node.value);
-            } else if *key < node.key {
-                current_node = node.left.as_ref();
-            } else {
-                current_node = node.right.as_ref();
-            }
+            current_node = match key.cmp(&node.key) {
+                std::cmp::Ordering::Less => node.left.as_ref(),
+                std::cmp::Ordering::Greater => node.right.as_ref(),
+                std::cmp::Ordering::Equal => return Some(&node.value),
+            };
         }
 
         None
